@@ -1,0 +1,4 @@
+AlfabLink.oxt
+Copyright (c) 2026 B. Antonio Fernández
+
+Macros to insert links to alphabetical index entries

@@ -1,0 +1,529 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE script:module PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "module.dtd">
+<script:module xmlns:script="http://openoffice.org/2000/script" script:name="Module1" script:language="StarBasic" script:moduleType="normal">REM  *****  BASIC  *****
+
+&apos;Das Modul enthält 10 Subs:
+&apos;Main -&gt; das zu startende Makro
+&apos;erstelle_dialog -&gt; ein Untermakro, um den Dialog zur Laufzeit zu erstellen aus dem heraus die anderen Makros gestartet werden:
+&apos;verweise_setzen -&gt; das eigentliche Programm, um Seitenzahlen im Stichwortverzeichnis mit Querverweisen zu versehen
+&apos;butlist1_ActionPerformed, butlist2_ActionPerformed -&gt; Makros für den ActionListener für die Button im Dialog
+&apos;win_windowClosing, win_windowClosed, win_windowActivated, win_windowDeactivated -&gt; Makros für den Fensterlistener, um auf das Schließen des Dialogs reagieren zu können
+
+&apos;https://de.openoffice.info/viewtopic.php?t=76711&amp;sid=d9a9e9a4ce3e80676e2a17ea9c40fb1a
+
+&apos;El módulo contiene 10 subs:
+&apos; Main -&gt; la macro que inicia el procedimiento
+&apos; erstelle_dialog -&gt; macro para crear el diálogo en tiempo de ejecución desde donde se inician las otras macros:
+&apos; verweise_setzens -&gt; la macro base para agregar referencias cruzadas a números de página en el índice
+&apos; butlist1_ActionPerformed, butlist2_ActionPerformed -&gt; Macros para los gestionar los botones en el diálogo
+&apos; win_windowClosing, win_windowClosed, win_windowActivated, win_windowDeactivated -&gt; Macros para gestionar el diálogo
+&apos; L10n -&gt; Macro para las traducciones a distintos idiomas 
+
+Public warten_dialog as object
+Public abbruch as boolean &apos;beendet Hauptschleife wenn der Benutzer den Dialog vorfristig schließt
+Global Tx(20)
+Const praefix=&quot;x_&quot; &apos;Präfix für die Stichwortlesezeichen, zur Unterscheidung ggf. anderer Lesezeichen
+
+ Rem ############
+Sub Main&apos;haupt_stichworte_verlinken
+  erstelle_dialog
+End Sub
+
+ Rem ############
+Sub verweise_setzen()
+  &apos;Originalautor: www.jm-schmidt.de
+  &apos;be- und umgearbeitet im  April 2023: de.openoffice.info, mikeleb
+
+  Dim Found as Integer
+  startzeit = time()
+
+  warten_dialog.getcontrol(&quot;but2&quot;).visible=false
+  warten_dialog.getcontrol(&quot;but1&quot;).model.label=Tx(4)
+  warten_dialog.getcontrol(&quot;but1&quot;).model.enabled=false
+
+  oDoc=ThisComponent
+  cur = oDoc.Text.createTextCursor
+  oViewCursor = oDoc.CurrentController.getViewCursor
+  indexes = ThisComponent.getDocumentIndexes()
+  For i = 0 To Indexes.getCount() - 1
+    oIndex = Indexes.getByIndex(i)
+    If oIndex.supportsService(&quot;com.sun.star.text.DocumentIndex&quot;) Then
+      Found = Found + 1
+      If Found = 1 Then
+        warten_dialog.getcontrol(&quot;warten0&quot;).text= Tx(7) 
+        warten_dialog.getcontrol(&quot;warten1&quot;).text= oIndex.Name     
+        Exit For
+      End If
+    End If
+  Next
+  
+  If Found = 0 Then
+    warten_dialog.endexecute
+    Msgbox (Tx(20),48,Tx(0))
+    Exit sub
+  End If
+
+  If msgbox ( Tx(18), 4+32+128, Tx(19) ) = 6 then
+    warten_dialog.getcontrol(&quot;warten3&quot;).text= Tx(8)
+    oindex.update
+    wait 1000
+  End if
+
+  warten_dialog.getcontrol(&quot;warten3&quot;).text=TX(6)
+  &apos;Prüfen der Verzeichnisstruktur und Auslesen von zusätzlichem Text hinter Eintrag bzw. vor Seitennummer
+  fehler=0
+  ReDim level(2)
+  for lv=0 to 2
+    level1=oindex.levelformat.getbyindex(2+lv)
+    suffix_lv=&quot;&quot;
+    praefix_lv=&quot;&quot;
+    for token=0 to ubound(level1)
+      if level1(token)(0).value=&quot;TokenEntryText&quot; then
+        if token&gt;0 then
+          fehler=1  &apos;das 1. Token muss der Verzeichniseintrag sein
+        end if
+        if level1(token+1)(0).value=&quot;TokenText&quot; then
+          suffix_lv=level1(token+1)(2).value
+        end if
+      end if
+      if level1(token)(0).value=&quot;TokenPageNumber&quot; then
+        if token&lt;ubound(level1) then
+          fehler=2  &apos;das letzte Token muss die Seitennummer sein
+        end if
+        if level1(token-1)(0).value=&quot;TokenText&quot; then
+          praefix_lv=level1(token-1)(2).value
+          if level1(token-2)(0).value&lt;&gt;&quot;TokenTabStop&quot; then
+            fehler=3  &apos;vor dem Text vor der Seitennummer muss ein TabStop sein
+          end if
+        elseif level1(token-1)(0).value&lt;&gt;&quot;TokenTabStop&quot; then
+          fehler=3  &apos;wenn kein text vor der Seitennummer dann muss da ein TabStop sein
+        end if
+      end if
+    next
+    level(lv)=array(suffix_lv, praefix_lv)
+  next
+  if not(oIndex.UseCombinedEntries) then
+    fehler=4
+  end if
+  if fehler&gt;0 then
+    warten_dialog.getcontrol(&quot;warten3&quot;).text=tx(9)
+  end if
+  wait 1000
+   If fehler=0 then
+     warten_dialog.getcontrol(&quot;but1&quot;).model.enabled=true
+     warten_dialog.getControl(&quot;warten3&quot;).Text = tx(10)
+    &apos;Alle ursprünglichen Lesezeichen entfernen
+    oMarks=ThisComponent.Bookmarks
+    for k=oMarks.count-1 to 0 step -1
+      oMark=oMarks.getbyindex(k)
+      if left(oMark.Name,len(praefix))=praefix then
+        oMark.anchor.getText().removeTextContent(oMark)
+      end if
+    next
+     &apos;Alle Stichwortvorkommen im Dokument einlesen und Lesezeichen setzen
+    oindex=odoc.documentindexes(i)
+     Dim aStichworte(ubound(oindex.documentindexmarks))
+    n_sw=-1
+    Do while not(abbruch) and n_sw &lt; ubound(aStichworte)
+      n_sw=n_sw+1
+      warten_dialog.getControl(&quot;warten3&quot;).Text = Tx(11) &amp; n_sw+1 &amp; Tx(12) &amp; ubound(aStichworte)+1
+      oMark=oindex.DocumentIndexMarks(n_sw)
+      &apos;zur Textstelle gehen
+      oViewCursor.gotoRange(oMark.anchor, false)
+      aStichworte(n_sw)=DimArray(4)
+      aStichworte(n_sw)(0)=rtrim(oMark.markEntry &amp; oMark.anchor.string) &apos;Text des Eintrages, ggf. Leerzeichen am Ende werden entfernt, da sie im Verzeichnis ebenfalls automatisch entfernt werden
+      aStichworte(n_sw)(1)=oViewCursor.getpage     &apos;Seite des Vorkommens
+      aStichworte(n_sw)(2)=oviewcursor.position.x  &apos;Position des Vorkommens
+      aStichworte(n_sw)(3)=oviewcursor.position.y
+      aStichworte(n_sw)(4)=praefix &amp; aStichworte(n_sw)(0) &amp; &quot;-&quot; &amp; n_sw  &apos;Name des Lesezeichens
+      &apos;Lesezeichen erstellen
+      oBookmark = ThisComponent.createInstance(&quot;com.sun.star.text.Bookmark&quot;)
+      oBookmark.setName(aStichworte(n_sw)(4))
+      ocurtmp=oViewcursor.Text.createTextCursor
+      ocurtmp.gotoRange(oMark.anchor, false)
+      oViewCursor.Text.insertTextContent(ocurtmp, oBookmark, False)
+    Loop
+
+    warten_dialog.getControl(&quot;warten3&quot;).Text = Tx(13)
+    cur.gotoRange(oIndex.getAnchor, false)
+    cur.CollapseToStart &apos;vorderste Position im Verzeichnis
+
+    &apos;Anzahl Einträge ermitteln
+    anzahl_eintraege = 0
+    Do
+      IF cur.ParaStyleName = oIndex.ParaStyleLevel1 OR cur.ParaStyleName = oIndex.ParaStyleLevel2 OR cur.ParaStyleName = oIndex.ParaStyleLevel3 Then
+        anzahl_eintraege = anzahl_eintraege + 1
+      Elseif cur.ParaStyleName &lt;&gt; oIndex.ParaStyleHeading AND cur.ParaStyleName &lt;&gt; oIndex.ParaStyleSeparator Then
+        Exit Do
+      End If
+      cur.GotoNextParagraph(False)
+    Loop
+
+    cur.gotoRange(oIndex.getAnchor, false)
+    cur.CollapseToStart
+    dd = 0
+    Do While not(abbruch) and dd&lt;anzahl_eintraege
+      cur.GotoEndOfParagraph(False)
+      select case cur.ParaStyleName
+        case oIndex.ParaStyleLevel1
+          lv=0
+        case oIndex.ParaStyleLevel2
+          lv=1
+        case oIndex.ParaStyleLevel3
+          lv=2
+        case else
+          lv=-1
+      end select
+      &apos;Verzeichniseintrag?
+      IF lv&gt;-1 Then
+        dd = dd + 1
+        cur.GotoStartOfParagraph(False)
+        cur.GotoEndOfParagraph(True)
+        &apos;Auslesen des gesamten Eintrags in Array tmp()
+        tmp = Split(cur.String, CHR(9))
+        &apos;Finden aller Lesezeichen zu diesem Eintrag, sortiert
+        sEintrag=left(tmp(0),len(tmp(0))-len(level(lv)(0)))
+        warten_dialog.getControl(&quot;warten3&quot;).Text = Tx(13) &amp; dd &amp; Tx(12) &amp; anzahl_eintraege &amp;_
+             chr(10) &amp; chr(10) &amp; Tx(14) &amp; sEintrag
+         n=-1
+        for z=0 to ubound(aStichworte)
+          if aStichworte(z)(0)=sEintrag then
+            n=n+1
+            ReDim preserve aEintrag(n)
+            aEintrag(n)=aStichworte(z)
+            tausch=1
+            k=n-1
+            do while tausch=1 and k&gt;-1
+              if (aEintrag(k+1)(3)&gt;aEintrag(k)(3)) or (aEintrag(k+1)(3)=aEintrag(k)(3) and aEintrag(k+1)(2)&gt;aEintrag(k)(2)) then
+                tausch=0
+              else
+                swp=aEintrag(k)
+                aEintrag(k)=aEintrag(k+1)
+                aEintrag(k+1)=swp
+              end if
+              k=k-1
+            loop
+          end if
+        next
+
+        &apos;Auslesen der ggf. mehreren Seitenzahlen
+        tmp2 = Split(join(split(tmp(ubound(tmp)),level(lv)(1)),&quot;&quot;), &quot;, &quot;)
+        tmp(ubound(tmp))=level(lv)(1)
+        &apos;.UseCombinedEntries ?
+        &apos;.UsesDash ? .UsePP ?
+        &apos;es können drei Fälle auftreten (.UsesCombinedEntries=True und .UsesDash=False und .UsePP=True):
+        &apos;  45    Stichwort nur auf der Seite
+        &apos;  45f.  Stichwort auf der Seite und der folgenden
+        &apos;  45ff.  Stichwort auf der Seite und den folgenden
+        &apos;der Link wird, in diesem Beispiel, immer nur zum Stichwort auf Seite 45 führen - ein Link zu mehreren Zielen ist nicht möglich
+        &apos;es können zwei Fälle auftreten (.UsesCombinedEntries=True und .UsesDash=True und .UsePP=False):
+        &apos;  45    Stichwort nur auf der Seite 45
+        &apos;  45-47  Stichwort auf der Seite 45 bis einschließlich Seite 46
+        &apos;wenn .UsesCombinedEntries=False oder .UsesDash=False und .UsePP=False, dann gibt es zu jedem Eintrag eine Liste nur einzelner Seiten
+        &apos;der Fall muss nicht extra betrachtet werden
+
+        if ubound(tmp2)&gt;-1 then  &apos;mindestens eine Seitennummer vorhanden?
+          if oIndex.UsePP then
+            sTrenner=&quot;f&quot;
+          else
+            sTrenner=&quot;-&quot;
+          end if
+          &apos;aktuelle Zeile im Verzeichnis
+          cur.GotoStartOfParagraph(False)
+          &apos;lösche alles hinter dem Tabulator
+          cur.goRight(LEN(join(tmp,chr(9))), False)
+          cur.GotoEndOfParagraph(True)
+          cur.String = &quot;&quot;
+          &apos;Aufspalten einer Seitennumer mit ggf. f. oder ff.
+          tmp3=split(tmp2(0),sTrenner)
+          &apos;die Seitenzahl weg
+          nseite=val(tmp3(0))
+          tmp3(0)=&quot;&quot;
+          &apos;neuer Text ohne Seitenzahl
+          neu=join(tmp3,sTrenner)
+          &apos;Suche das Lesezeichen auf der richtigen Seite
+          nr=0
+          do until aEintrag(nr)(1)=nseite or nr=ubound(aEintrag)
+            nr=nr+1
+          loop
+          &apos;msgbox nr
+          if aEintrag(nr)(1)=nseite then &apos;Lesezeichen auf der Seite existiert
+            oReference = ThisComponent.createInstance(&quot;com.sun.star.text.textfield.GetReference&quot;)
+            oReference.SourceName = aEintrag(nr)(4)
+            oReference.SequenceNumber = 0
+            oReference.ReferenceFieldPart = com.sun.star.text.ReferenceFieldPart.PAGE
+            oReference.ReferenceFieldSource = com.sun.star.text.ReferenceFieldSource.BOOKMARK
+            oDoc.getText.insertTextContent(cur, oReference, False)
+            cur.GotoEndOfParagraph(False)
+          else  &apos;Lesezeichen nicht vorhanden
+            cur.String = nSeite
+            cur.collapsetoend
+          end if
+          cur.String = neu
+          cur.collapsetoend
+          &apos;falls noch mehr Seiten zu dem Eintrag
+          for j=1 to ubound(tmp2)
+            cur.String = &quot;, &quot;
+            cur.collapsetoend
+            tmp3=split(tmp2(j),sTrenner)
+            nseite=val(tmp3(0))
+            tmp3(0)=&quot;&quot;
+            neu=join(tmp3,sTrenner)
+            do until aEintrag(nr)(1)=nseite or nr=ubound(aEintrag)
+              nr=nr+1
+            loop
+            &apos;msgbox nr
+            if aEintrag(nr)(1)=nseite then &apos;Lesezeichen auf der Seite existiert, Querverweis setzen
+              oReference = ThisComponent.createInstance(&quot;com.sun.star.text.textfield.GetReference&quot;)
+              oReference.SourceName = aEintrag(nr)(4)
+              oReference.SequenceNumber = 0
+              oReference.ReferenceFieldPart = com.sun.star.text.ReferenceFieldPart.PAGE
+              oReference.ReferenceFieldSource = com.sun.star.text.ReferenceFieldSource.BOOKMARK
+              oDoc.getText.insertTextContent(cur, oReference, False)
+              cur.GotoEndOfParagraph(False)
+            else              &apos;Lesezeichen nicht vorhanden, es wird der ursprüngliche Text gesetzt
+              cur.String =nSeite
+              cur.collapsetoend
+            end if
+            cur.String = neu
+            cur.collapsetoend
+          next
+        end if
+      end if
+      cur.GotoNextParagraph(False)
+    loop
+    oviewcursor.gotoRange(oIndex.getAnchor, false)
+    oviewcursor.collapsetostart
+  end if
+
+  ThisComponent.getTextfields.refresh()
+
+  warten_dialog.getControl(&quot;warten4&quot;).Text = Tx(15) &amp; startzeit &amp; &quot;     &quot; &amp; Tx(16) &amp; time()
+  warten_dialog.getControl(&quot;but1&quot;).Label=Tx(17)
+
+End Sub
+
+ Rem ############
+Sub L10n
+ Dim Lang
+   If Not GlobalScope.BasicLibraries.isLibraryLoaded(&quot;Tools&quot;) Then
+     GlobalScope.BasicLibraries.LoadLibrary(&quot;Tools&quot;)
+   End If
+   Lang = GetStarOfficeLocale.language
+
+
+Select case Lang
+ Case &quot;de&quot;
+  Tx(0)=&quot;Stichwortverzeichnisse verlinken&quot;
+  Tx(1)=&quot;Abbruch&quot;
+  Tx(2)=&quot;OK&quot;
+  Tx(3)=&quot;Wollen Sie die Einträge im Stichwortverzeichnis verlinken? &quot; &amp;  CHR(13) &amp; CHR(13) &amp;_
+        &quot;- Es wird eine Indexaktualisierung angefordert.&quot;
+  Tx(4)=&quot;Stop&quot;
+  TX(5)=&quot;Document: &quot;
+  TX(6)=&quot;Die Verzeichnisstruktur wird geprüft ...&quot;
+  Tx(7)=&quot;Stichwortverzeichnis: &quot;
+  Tx(8)=&quot;Das Stichwortverzeichnis wird aktualisiert ...&quot;
+  Tx(9)=&quot;Diese Strukur des Stichwortverzeichnisses kann nicht verarbeitet werden!&quot;
+  Tx(10)=&quot;alte Lesezeichen werden gelöscht ...&quot;
+  Tx(11)=&quot;Stichwörter werden eingelesen, Lesezeichen gesetzt ... &quot;
+  Tx(12)=&quot; von &quot;
+  Tx(13)=&quot;Querverweise werden erstellt ...&quot;
+  Tx(14)=&quot;aktueller Eintrag: &quot;
+  Tx(15)=&quot;Start: &quot;
+  Tx(16)=&quot;Ende: &quot;
+  Tx(17)=&quot;Ende&quot;
+  Tx(18)=&quot;Beim Aktualisieren des Index gehen manuelle Einstellungen verloren.&quot; &amp; CHR(13) &amp; CHR(9) &amp; _
+        &quot;Möchten Sie den Index wirklich aktualisieren?&quot; 
+  Tx(19)=&quot;Index aktualisieren&quot;
+  Tx(20)=&quot;Das Dokument enthält keine alphabetischen Indizes&quot;
+
+ Case &quot;es&quot;
+  Tx(0)=&quot;Enlaces en Índice alfabético&quot;
+  Tx(1)=&quot;Cancelar&quot;
+  Tx(2)=&quot;Proceder&quot;
+  Tx(3)=&quot;¿Desea incluir enlaces en las entradas del índice alfabético?&quot; &amp;CHR(13) &amp; CHR(13) &amp; CHR(9) &amp; _
+        &quot;- Se solicita la actualización del índice.&quot;
+  Tx(4)=&quot;Detener&quot;
+  TX(5)=&quot;Documento: &quot;
+  TX(6)=&quot;Comprobando estructura...&quot;
+  Tx(7)=&quot;Indice alfabético: &quot;
+  Tx(8)=&quot;Actualizando índice...&quot;
+  Tx(9)=&quot;¡Esta estructura de índice no se puede procesar!&quot;
+  tx(10)=&quot;los marcadores antiguos se eliminarán...&quot;
+  Tx(11)=&quot;Leyendo entradas de índice, configurando marcadores...&quot;
+  Tx(12)=&quot; de &quot;
+  Tx(13)=&quot;Creando remisiones...&quot;
+  Tx(14)=&quot;Entrada actual: &quot;
+  Tx(15)=&quot;Inicio: &quot;
+  Tx(16)=&quot;Final: &quot;
+  Tx(17)=&quot;Salir&quot;
+  Tx(18)=&quot;Al actualizar el índice se pierden los ajustes manuales.&quot; &amp; CHR(13) &amp; CHR(9) &amp; _
+        &quot;¿Está seguro de querer actualizar el índice?&quot;
+  Tx(19)=&quot;Actualizar índice&quot;
+  Tx(20)=&quot;El documento no contiene índices alfabéticos&quot;
+  
+ Case else
+
+  Tx(0)=&quot;Links in Alphabetical Index&quot;
+  Tx(1)=&quot;Cancel&quot;
+  Tx(2)=&quot;Proceed&quot;
+  Tx(3)=&quot;Do you want to include links in alphabetical index entries?&quot; &amp;CHR(13) &amp; CHR(13) &amp; CHR(9) &amp; _
+        &quot;- Index update requested.&quot;
+  Tx(4)=&quot;Stop&quot;
+  TX(5)=&quot;Document: &quot;
+  TX(6)=&quot;Checking structure...&quot;
+  Tx(7)=&quot;Alphabetical index: &quot;
+  Tx(8)=&quot;Updating index...&quot;
+  Tx(9)=&quot;This index structure cannot be processed!&quot;
+  tx(10)=&quot;old bookmarks will be deleted...&quot;
+  Tx(11)=&quot;Reading index entries, setting bookmarks...&quot;
+  Tx(12)=&quot; of &quot;
+  Tx(13)=&quot;Creating crossreferences...&quot;
+  Tx(14)=&quot;Current entry: &quot;
+  Tx(15)=&quot;Start: &quot;
+  Tx(16)=&quot;End: &quot;
+  Tx(17)=&quot;Exit&quot;
+  Tx(18)=&quot;When updating the index, manual settings are lost.&quot; &amp; CHR(13) &amp; CHR(9) &amp; _
+        &quot;Are you sure you want to update the index?&quot;
+  Tx(19)=&quot;Update index&quot;
+  Tx(20)=&quot;There are no alphabetical indexes in the document&quot;
+ End select
+End Sub
+
+ Rem ############
+Sub erstelle_dialog
+  Call L10n
+ &apos;warten-Dialog--------------------------
+  warten_model = CreateUnoService(&quot;com.sun.star.awt.UnoControlDialogModel&quot;)
+  warten_model.setPropertyValue(&quot;Width&quot;,  300) &apos;343
+  warten_model.setPropertyValue(&quot;Height&quot;, 120) &apos;65
+  warten_model.setPropertyValue(&quot;PositionX&quot;, 100)
+  warten_model.setPropertyValue(&quot;PositionY&quot;, 100)
+  warten_model.SetPropertyValue(&quot;Title&quot;,Tx(0))
+
+  oMod_warten = warten_model.createInstance(&quot;com.sun.star.awt.UnoControlFixedTextModel&quot;)
+  With oMod_warten
+    .setPropertyValue(&quot;Name&quot;,&quot;warten0&quot;)
+    .setPropertyValue(&quot;PositionX&quot;,5) &apos;192
+    .setPropertyValue(&quot;PositionY&quot;,5)
+    .setPropertyValue(&quot;Width&quot;,68)
+    .setPropertyValue(&quot;Height&quot;,15)
+    .setPropertyValue(&quot;MultiLine&quot;, True)
+    .setPropertyValue(&quot;Label&quot;,TX(5))
+  End With
+  warten_model.insertByName(&quot;warten0&quot;, oMod_warten)
+
+  oMod_warten = warten_model.createInstance(&quot;com.sun.star.awt.UnoControlFixedTextModel&quot;)
+  With oMod_warten
+    .setPropertyValue(&quot;Name&quot;,&quot;warten1&quot;)
+    .setPropertyValue(&quot;PositionX&quot;,75) &apos;192
+    .setPropertyValue(&quot;PositionY&quot;,5)
+    .setPropertyValue(&quot;Width&quot;,180)
+    .setPropertyValue(&quot;Height&quot;,15)
+    .setPropertyValue(&quot;MultiLine&quot;, True)
+    .setPropertyValue(&quot;TextColor&quot;, RGB(10,100,10))
+    .setPropertyValue(&quot;FontUnderline&quot;, 1)
+    .setPropertyValue(&quot;FontWeight&quot;, &quot;Bold&quot;)     
+    .setPropertyValue(&quot;Label&quot;,ThisComponent.Title)
+  End With
+  warten_model.insertByName(&quot;warten1&quot;, oMod_warten)
+
+  oMod_warten2 = warten_model.createInstance(&quot;com.sun.star.awt.UnoControlButtonModel&quot;)
+  With oMod_warten2
+    .setPropertyValue(&quot;Name&quot;,&quot;but1&quot;)
+    .setPropertyValue(&quot;PositionX&quot;,10)
+    .setPropertyValue(&quot;PositionY&quot;,95) &apos;45
+    .setPropertyValue(&quot;Width&quot;,60)
+    .setPropertyValue(&quot;Height&quot;,16)
+    .setPropertyValue(&quot;Label&quot;, Tx(1))
+    .setPropertyValue(&quot;DefaultButton&quot;, True)
+    &apos;.setPropertyValue(&quot;Enabled&quot;, False)
+  End With
+  warten_model.insertByName(&quot;but1&quot;, oMod_warten2)
+
+  oMod_warten5 = warten_model.createInstance(&quot;com.sun.star.awt.UnoControlButtonModel&quot;)
+  With oMod_warten5
+    .setPropertyValue(&quot;Name&quot;,&quot;but2&quot;)
+    .setPropertyValue(&quot;PositionX&quot;,100)
+    .setPropertyValue(&quot;PositionY&quot;,95) &apos;45
+    .setPropertyValue(&quot;Width&quot;,60)
+    .setPropertyValue(&quot;Height&quot;,16)
+    .setPropertyValue(&quot;Label&quot;, Tx(2))
+    .setPropertyValue(&quot;DefaultButton&quot;, True)
+    &apos;.setPropertyValue(&quot;Enabled&quot;, False)
+  End With
+  warten_model.insertByName(&quot;but2&quot;, oMod_warten5)
+
+  oListbut1 = createUnoListener(&quot;butlist1_&quot;,&quot;com.sun.star.awt.XActionListener&quot;)
+  oListbut2 = createUnoListener(&quot;butlist2_&quot;,&quot;com.sun.star.awt.XActionListener&quot;)
+
+  oMod_warten3 = warten_model.createInstance(&quot;com.sun.star.awt.UnoControlFixedTextModel&quot;)
+  With oMod_warten3
+    .setPropertyValue(&quot;Name&quot;,&quot;warten3&quot;)
+    .setPropertyValue(&quot;PositionX&quot;,5) &apos;192
+    .setPropertyValue(&quot;PositionY&quot;,25)
+    .setPropertyValue(&quot;Width&quot;,180)
+    .setPropertyValue(&quot;Height&quot;,45)
+    .setPropertyValue(&quot;MultiLine&quot;, True)
+    .setPropertyValue(&quot;Label&quot;,Tx(3))
+  End With
+  warten_model.insertByName(&quot;warten3&quot;, oMod_warten3)
+
+  oMod_warten4 = warten_model.createInstance(&quot;com.sun.star.awt.UnoControlFixedTextModel&quot;)
+  With oMod_warten4
+    .setPropertyValue(&quot;Name&quot;,&quot;warten4&quot;)
+    .setPropertyValue(&quot;PositionX&quot;,5) &apos;192
+    .setPropertyValue(&quot;PositionY&quot;,75)
+    .setPropertyValue(&quot;Width&quot;,180)
+    .setPropertyValue(&quot;Height&quot;,15)
+    .setPropertyValue(&quot;MultiLine&quot;, True)
+    .setPropertyValue(&quot;Label&quot;,&quot;&quot;)
+  End With
+  warten_model.insertByName(&quot;warten4&quot;, oMod_warten4)
+
+  oWinLis = createUnoListener(&quot;win_&quot;,&quot;com.sun.star.awt.XTopWindowListener&quot;)
+  warten_dialog = CreateUnoService(&quot;com.sun.star.awt.UnoControlDialog&quot;)
+  warten_dialog.addTopWindowListener(oWinLis)
+  warten_dialog.setModel(warten_model)
+  warten_dialog.getControl(&quot;but1&quot;).addActionListener(oListbut1)
+  warten_dialog.getControl(&quot;but2&quot;).addActionListener(oListbut2)
+
+  oWin2 = CreateUnoService(&quot;com.sun.star.awt.Toolkit&quot;)
+  warten_dialog.createPeer(oWin2, null)
+  warten_dialog.execute
+
+End Sub
+
+ Rem ############
+Sub butlist1_ActionPerformed(oevent)
+  warten_dialog.endexecute
+end sub
+
+ Rem ############
+Sub butlist2_ActionPerformed(oevent)
+  verweise_setzen
+end sub
+
+ Rem ############
+
+sub win_windowClosing()
+  abbruch=true
+end sub
+
+ Rem ############
+sub win_windowActivated
+
+end sub
+
+ Rem ############
+sub win_windowDeactivated
+
+end sub
+
+ Rem ############
+sub win_windowClosed()
+  abbruch=true
+end sub
+
+</script:module>

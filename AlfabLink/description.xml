@@ -1,0 +1,43 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<description
+ xmlns   = "http://openoffice.org/extensions/description/2006"             
+ xmlns:d = "http://openoffice.org/extensions/description/2006"             
+ xmlns:l = "http://libreoffice.org/extensions/description/2011" 
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+
+	<identifier value="vnd.bantoniof.AlfabLink"/>
+
+	<version value="26.8"/>
+
+	<update-information>
+	<src xlink:href="https://githubraw.com/Bantoniof/LibreOffice-AlfabLink/master/AlfabLink.update.xml"/>
+	</update-information>
+
+	 <dependencies>
+		<l:LibreOffice-minimal-version value="7.5" d:name="LibreOffice.org 7.5 or higher" />
+	</dependencies>
+
+	<publisher>
+		<name lang="en" xlink:href="https://github.com/Bantoniof/LibreOffice-AlfabLink">B. Antonio Fernández</name>
+	</publisher>
+
+    <extension-description>
+		<src xlink:href="pkg-desc/pkg-description_en.txt"/>
+		<src xlink:href="pkg-desc/pkg-description_en.txt" lang = "en" />
+		<src xlink:href="pkg-desc/pkg-description_es.txt" lang = "es" />
+		<src xlink:href="pkg-desc/pkg-description_de.txt" lang = "de" />
+	</extension-description>
+
+	<registration>
+		<simple-license  accept-by="admin" default-license-id="ID0" suppress-on-update="true" >
+			<license-text xlink:href="registration/Licencia_en.txt" lang="en" license-id="ID0" />
+			<license-text xlink:href="registration/Licencia_de.txt" lang="de" />
+			<license-text xlink:href="registration/Licencia_es.txt" lang="es-ES" />
+		</simple-license>
+	</registration>
+
+	<icon>
+		<default xlink:href="icons/_AlfabLink.svg" /> 
+	</icon>
+
+</description>

@@ -1,0 +1,10 @@
+
+Diese Datei enthält die AlfabLink-Erweiterung
+    AlfabLink ist kostenlos: Sie können es weiterverbreiten und/oder ändern
+    unter den Bedingungen der GNU General Public License, veröffentlicht von
+    der Free Software Foundation, Version 3 oder höher
+
+    AlfabLink wird in der Hoffnung verbreitet, dass es nützlich sein wird, aber
+    OHNE JEGLICHE GEWÄHRLEISTUNG der MARKTGÄNGIGKEIT oder EIGNUNG FÜR 
+    KEIN BESTIMMTER ZWECK. Siehe <https://www.gnu.org/licenses/> 
+    für weitere Details..
