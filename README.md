@@ -2,7 +2,6 @@
 <h4 id="top"> <a href="#es">Español</a> &bull; <a href="#en">English</a> &bull; <a href="#de">Deutsch</a> </h4>
 - (Translations in English and Deutsch have had machine translation assistance; sorry..)
 
-<a id="es" href="#top">&uArr; Arriba</a></p>
 ## AlfabLink.oxt
 Es una extensión para **LibreOffice Writer** con macros para insertar enlaces a las entradas de índices alfabéticos.
 
